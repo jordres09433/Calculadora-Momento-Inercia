@@ -1,0 +1,95 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Versión computador</title><style>
+*{box-sizing:border-box}body{margin:0;padding:16px;font-family:Arial,sans-serif;color:#182433;background:#f2f5f8}
+header{max-width:1150px;margin:0 auto 16px;background:#16334d;color:white;padding:22px;border-radius:14px}
+header h1{margin:0 0 7px;font-size:clamp(22px,4vw,30px)}header p{margin:0;color:#dce8f2}
+main{max-width:1150px;margin:auto;display:grid;grid-template-columns:350px 1fr;gap:16px}
+.panel{background:white;border:1px solid #dce3eb;border-radius:14px;padding:18px;box-shadow:0 3px 12px #162b3d0c}
+h2{font-size:18px;margin:0 0 14px}.field{display:block;margin:12px 0;font-size:14px;font-weight:600}
+.field span{display:block;margin-bottom:6px}input[type=number],select{width:100%;padding:11px;border:1px solid #bdc9d5;border-radius:8px;font-size:16px;background:white}
+.options{display:flex;gap:15px;flex-wrap:wrap;margin:12px 0}.options label{font-size:14px}
+button{border:0;border-radius:9px;padding:12px 16px;font-weight:bold;font-size:15px;cursor:pointer}
+.primary{background:#1769aa;color:white}.secondary{background:#e8edf2;color:#172b3d}.actions{display:flex;gap:9px;margin-top:16px}.actions button{flex:1}
+#result{margin:12px 0;padding:14px;background:#eef5fb;border-radius:9px;min-height:58px}.big{display:inline-block;font-size:23px;font-weight:bold;margin-top:5px;color:#125b91}
+canvas{width:100%;max-height:390px;border:1px solid #e1e6ec;border-radius:10px;background:white}
+#history{max-height:140px;overflow:auto;border:1px solid #e1e6ec;border-radius:8px;padding:8px}.history-item{padding:7px;border-bottom:1px solid #edf0f3;font-size:13px}
+.note{font-size:13px;color:#586879;line-height:1.5}footer{max-width:1150px;margin:18px auto 4px;text-align:center;color:#596979;font-size:13px;padding:12px}
+@media(max-width:760px){body{padding:10px}main{grid-template-columns:1fr}header{padding:17px}.panel{padding:14px}canvas{max-height:300px}}
+</style></head><body>
+<header><h1>Calculadora de momento de inercia</h1><p>Perfiles geométricos · Ejes centroidales X y Y</p></header>
+<main><section class="panel"><h2>1. Datos de entrada</h2>
+<label class="field"><span>Seleccione la figura</span><select id="shape">
+<option value="rect">Rectángulo</option><option value="square">Cuadrado</option><option value="circle">Círculo</option><option value="triangle">Triángulo isósceles</option><option value="ellipse">Elipse</option><option value="hollow">Rectángulo hueco</option></select></label>
+<div id="fields"></div><div class="field"><span>Eje de referencia</span><div class="options">
+<label><input type="radio" name="axis" value="X" checked> Eje X (horizontal)</label><label><input type="radio" name="axis" value="Y"> Eje Y (vertical)</label></div></div>
+<div class="field"><span>Unidad de medida</span><select id="unit"><option>cm</option><option>mm</option><option>m</option></select></div>
+<div class="options"><label><input type="checkbox" id="showCentroid" checked> Mostrar centroide</label></div>
+<div class="actions"><button class="primary" id="calculate">CALCULAR</button><button class="secondary" id="clear">LIMPIAR</button></div>
+<p class="note">Ingrese dimensiones positivas y use la misma unidad en todos los campos.</p></section>
+<section class="panel"><h2>2. Resultado y representación gráfica</h2><div id="result">El resultado aparecerá aquí.</div>
+<canvas id="plot" width="760" height="420" aria-label="Figura y ejes centroidales"></canvas><h2 style="margin-top:18px">Historial de cálculos</h2><div id="history"></div>
+<p class="note">Línea roja: eje X. Línea azul: eje Y. Punto negro: centroide.</p></section></main>
+<footer>Hecho por Jorge Chamorro y Alexander Benavides</footer><script>
+const $ = id => document.getElementById(id);
+const shape = $("shape");
+const axis = { get value(){ return document.querySelector('input[name="axis"]:checked').value; } };
+const fields = $("fields"), result = $("result"), historyBox = $("history");
+const canvas = $("plot"), ctx = canvas.getContext("2d"), showCentroid = $("showCentroid");
+const defs = {
+ rect:[["Base (b)","b"],["Altura (h)","h"]],
+ square:[["Lado (L)","L"]], circle:[["Radio (r)","r"]],
+ triangle:[["Base (b)","b"],["Altura (h)","h"]],
+ ellipse:[["Semieje horizontal (a)","a"],["Semieje vertical (b)","b"]],
+ hollow:[["Base exterior (B)","B"],["Altura exterior (H)","H"],["Base interior (b)","b"],["Altura interior (h)","h"]]
+};
+let history = [];
+function renderFields(){
+ fields.innerHTML="";
+ defs[shape.value].forEach(([label,key])=>{
+  const box=document.createElement("label"); box.className="field";
+  box.innerHTML=`<span>${label}</span><input type="number" min="0" step="any" id="v_${key}" placeholder="Ingrese ${label.toLowerCase()}">`;
+  fields.appendChild(box);
+ });
+}
+function read(key){
+ const el=$("v_"+key);
+ if(!el || el.value.trim()==="") throw Error("Complete todas las dimensiones solicitadas.");
+ const n=Number(el.value);
+ if(!Number.isFinite(n)||n<=0) throw Error("Las dimensiones deben ser mayores que cero.");
+ return n;
+}
+function calculate(){
+ try{
+  const s=shape.value, ax=axis.value; let I,w,h,v={};
+  if(s==="rect"){let b=read("b"),hh=read("h");v={b,h:hh};I=ax==="X"?b*hh**3/12:hh*b**3/12;w=b;h=hh;}
+  else if(s==="square"){let L=read("L");v={L};I=L**4/12;w=h=L;}
+  else if(s==="circle"){let r=read("r");v={r};I=Math.PI*r**4/4;w=h=2*r;}
+  else if(s==="triangle"){let b=read("b"),hh=read("h");v={b,h:hh};I=ax==="X"?b*hh**3/36:b**3*hh/48;w=b;h=hh;}
+  else if(s==="ellipse"){let a=read("a"),b=read("b");v={a,b};I=ax==="X"?Math.PI*a*b**3/4:Math.PI*a**3*b/4;w=2*a;h=2*b;}
+  else {let B=read("B"),H=read("H"),b=read("b"),hh=read("h");if(b>=B||hh>=H)throw Error("Las dimensiones interiores deben ser menores que las exteriores.");v={B,H,b,h:hh};I=ax==="X"?(B*H**3-b*hh**3)/12:(H*B**3-hh*b**3)/12;w=B;h=H;}
+  if(!Number.isFinite(I)||I<=0)throw Error("No se pudo calcular. Revise las dimensiones.");
+  const unit=$("unit").value;
+  result.innerHTML=`<strong>Momento de inercia respecto al eje ${ax}</strong><br><span class="big">${I.toFixed(4)} ${unit}⁴</span>`;
+  draw(s,v,w,h);
+  const name=shape.options[shape.selectedIndex].text;
+  history.unshift(`${new Date().toLocaleTimeString()} · ${name} · Eje ${ax} · I = ${I.toFixed(4)} ${unit}⁴`);
+  historyBox.innerHTML=history.map(x=>`<div class="history-item">${x}</div>`).join("");
+ }catch(e){result.textContent=e.message;alert(e.message);}
+}
+function draw(s,v,w,h){
+ const W=canvas.width,H=canvas.height,pad=65,scale=Math.min((W-2*pad)/w,(H-2*pad)/h),cx=W/2,cy=H/2,dw=w*scale,dh=h*scale;
+ ctx.clearRect(0,0,W,H);ctx.strokeStyle="#243447";ctx.lineWidth=3;ctx.fillStyle="rgba(53,129,190,.10)";
+ if(s==="circle"){ctx.beginPath();ctx.arc(cx,cy,v.r*scale,0,Math.PI*2);ctx.fill();ctx.stroke();}
+ else if(s==="ellipse"){ctx.beginPath();ctx.ellipse(cx,cy,v.a*scale,v.b*scale,0,0,Math.PI*2);ctx.fill();ctx.stroke();}
+ else if(s==="triangle"){ctx.beginPath();ctx.moveTo(cx-dw/2,cy+dh/3);ctx.lineTo(cx+dw/2,cy+dh/3);ctx.lineTo(cx,cy-2*dh/3);ctx.closePath();ctx.fill();ctx.stroke();}
+ else {ctx.strokeRect(cx-dw/2,cy-dh/2,dw,dh);if(s==="hollow"){ctx.fillStyle="#fff";ctx.fillRect(cx-v.b*scale/2,cy-v.h*scale/2,v.b*scale,v.h*scale);ctx.strokeRect(cx-v.b*scale/2,cy-v.h*scale/2,v.b*scale,v.h*scale);}}
+ ctx.save();ctx.setLineDash([8,6]);ctx.lineWidth=2;ctx.strokeStyle="#d33";ctx.beginPath();ctx.moveTo(pad,cy);ctx.lineTo(W-pad,cy);ctx.stroke();ctx.strokeStyle="#2463c5";ctx.beginPath();ctx.moveTo(cx,pad);ctx.lineTo(cx,H-pad);ctx.stroke();ctx.restore();
+ if(showCentroid.checked){ctx.fillStyle="#111";ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();ctx.font="14px Arial";ctx.fillText("Centroide",cx+9,cy-9);}
+ ctx.font="bold 14px Arial";ctx.fillStyle="#d33";ctx.fillText("X",W-pad+8,cy-8);ctx.fillStyle="#2463c5";ctx.fillText("Y",cx+8,pad-12);
+}
+function clearForm(){renderFields();result.textContent="El resultado aparecerá aquí.";ctx.clearRect(0,0,canvas.width,canvas.height);}
+$("calculate").addEventListener("click",calculate);
+$("clear").addEventListener("click",clearForm);
+shape.addEventListener("change",clearForm);
+showCentroid.addEventListener("change",()=>{if(history.length)calculate();});
+renderFields();
+</script></body></html>
